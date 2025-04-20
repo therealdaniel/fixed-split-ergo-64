@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2021 Jeff Epler for Adafruit Industries
-#
+# SPDX-FileCopyrightText: 2021 therealdaniel
 # SPDX-License-Identifier: MIT
 
 import keypad
@@ -68,27 +68,34 @@ kbd = BitmapKeyboard(usb_hid.devices)
 layout = KeyboardLayoutUS(kbd)
 
 keymap = {
-    'layer_0': [
+    0: [
         [K.ESCAPE, K.ONE, K.TWO, K.THREE, K.FOUR, K.FIVE, K.SIX, K.SEVEN, K.EIGHT, K.NINE, K.ZERO, K.BACKSPACE],  # row 1
         [K.GRAVE_ACCENT, K.Q, K.W, K.E, K.R, K.T, K.Y, K.U, K.I, K.O, K.P, K.BACKSPACE],
         [K.TAB, K.A, K.S, K.D, K.F, K.G, K.H, K.J, K.K, K.L, K.SEMICOLON, K.QUOTE],
         [K.LEFT_SHIFT, K.Z, K.X, K.C, K.V, K.B, K.N, K.M, K.COMMA, K.PERIOD, K.UP_ARROW, K.RETURN],
-        [K.LEFT_CONTROL, K.GUI, K.ALT, K.DELETE, 'layer_1', K.SPACEBAR, K.SPACEBAR, 'layer_2', K.FORWARD_SLASH, K.LEFT_ARROW, K.DOWN_ARROW, K.RIGHT_ARROW]
+        [K.LEFT_CONTROL, K.GUI, K.ALT, K.DELETE, 'lower', K.SPACEBAR, K.SPACEBAR, 'raise', K.FORWARD_SLASH, K.LEFT_ARROW, K.DOWN_ARROW, K.RIGHT_ARROW]
         ],
-    'layer_1': [
-        [K.GRAVE_ACCENT, K.ONE, K.TWO, K.THREE, K.FOUR, K.FIVE, K.SIX, K.SEVEN, K.EIGHT, K.NINE, K.ZERO, K.BACKSPACE],  # row 1
-        [K.GRAVE_ACCENT, K.Q, K.W, K.E, K.R, K.T, K.Y, K.U, K.I, K.O, K.P, K.BACKSPACE],
-        [None, K.F7, K.F8, K.F9, K.F10, K.F11, K.F12, K.MINUS, K.EQUALS, K.LEFT_BRACKET, K.RIGHT_BRACKET, K.BACKSLASH],
-        [K.LEFT_SHIFT, K.Z, K.X, K.C, K.V, K.B, K.N, K.M, K.COMMA, K.PERIOD, K.UP_ARROW, K.RETURN],
-        [K.LEFT_CONTROL, K.GUI, K.ALT, K.DELETE, 'layer_1', K.SPACEBAR, K.SPACEBAR, 'layer_2', K.FORWARD_SLASH, K.LEFT_ARROW, K.DOWN_ARROW, K.RIGHT_ARROW]
-        ],
-    'layer_2': [
+    1: [
         [None, None, None, None, None, None, None, None, None, None, None, None],  # row 1
-        [None, K.F1, K.F2, K.F3, K.F4, K.F5, K.F6, None, None, None, None, None],
+        [K.GRAVE_ACCENT, K.ONE, K.TWO, K.THREE, K.FOUR, K.FIVE, K.SIX, K.SEVEN, K.EIGHT, K.NINE, K.ZERO, None],
+        [None, K.F1, K.F2, K.F3, K.F4, K.F5, K.F6, K.MINUS, K.EQUALS, K.LEFT_BRACKET, K.RIGHT_BRACKET, K.BACKSLASH],
+        [K.LEFT_SHIFT, K.F7, K.F8, K.F9, K.F10, K.F11, K.F12, K.M, K.COMMA, K.PERIOD, None, None],
+        [K.LEFT_CONTROL, K.GUI, K.ALT, None, 'lower', K.SPACEBAR, K.SPACEBAR, 'raise', None, None, None, None]
+        ],
+    2: [
+        [None, None, None, None, None, None, None, None, None, None, None, None],  # row 1
+        [None, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', None],
         [None, K.F1, K.F2, K.F3, K.F4, K.F5, K.F6, '_', '+', '{', '}', '|'],
         [K.LEFT_SHIFT, K.F7, K.F8, K.F9, K.F10, K.F11, K.F12, None, None, None, None, None],
-        [K.LEFT_CONTROL, K.GUI, K.ALT, K.DELETE, 'layer_1', K.SPACEBAR, K.SPACEBAR, 'layer_2', None, None, None, None]
-        ]
+        [K.LEFT_CONTROL, K.GUI, K.ALT, K.DELETE, 'lower', K.SPACEBAR, K.SPACEBAR, 'raise', None, None, None, None]
+        ],
+    3: [
+        [None, None, None, None, None, None, None, None, None, None, None, None],  # row 1
+        [None, None, None, None, None, None, None, None, None, None, None, None],
+        [None, None, None, None, None, None, None, None, None, None, None, None],
+        [None, None, None, None, None, None, None, None, None, None, None, None],
+        [None, None, None, None, 'lower', None, None, 'raise', None, None, None, None],
+        ]    
     }
 
 #validate shape of keymap
@@ -97,7 +104,32 @@ for k, v in keymap.items():
     for row in v:
         assert len(row) == NUM_COLS, f"incorrect number of columns in layer {k}, row: {row}.\nExpecting {NUM_COLS}, got {len(row)}"
 
-layer = 'layer_0'
+# layer logic------------------------------------------------------------------/
+# layer_state is 2 bits comprised of whether raise and lower are active
+# bit 0 = raise, bit 1 = lower
+# we can then use layer state directly.
+# 0 = both off, 1 = raised, 2 = lowered, 3 = both.
+layer_state = 0b00  #initialise layer state to both off
+#bit masks
+RAISE = 0b01
+LOWER = 0b10
+
+def press_lower():
+    global layer_state
+    layer_state |= LOWER
+
+def release_lower():
+    global layer_state
+    layer_state &= ~LOWER
+
+def press_raise():
+    global layer_state
+    layer_state |= RAISE
+
+def release_raise():
+    global layer_state
+    layer_state &= ~RAISE
+#------------------------------------------------------------------------------/
 
 while True:
     ev = keys.events.get()
@@ -105,15 +137,15 @@ while True:
     if ev is not None:
         row = ev.key_number // len(column_pins)
         col = ev.key_number % len(column_pins)
-        key = keymap[layer][row][col]
+        key = keymap[layer_state][row][col]
 
         if ev.pressed and key is not None:
             print(key)
-            if key == 'layer_1':
-                layer = 'layer_1'
+            if key == 'raise':
+                press_raise()
                 continue
-            elif key == 'layer_2':
-                layer = 'layer_2'
+            elif key == 'lower':
+                press_lower()
                 continue
             #check if it's a string and not a keycode
             if isinstance(key, str):
@@ -122,16 +154,20 @@ while True:
             kbd.press(key)
 
         else:
-            if key in ('layer_1', 'layer_2'):
-                layer = 'layer_0'
+            if key == 'raise':
+                release_raise()
                 continue
-            
-            #release all keys at the same row/col across all layers
-            for l in keymap:
-                key = keymap[l][row][col]
-                if key is not None:
-                    #check if it's a string and not a keycode
-                    if isinstance(key, str):
-                        for k in layout.keycodes(key): kbd.release(k)
-                        continue
-                    kbd.release(key)
+            elif key == 'lower':
+                release_lower()
+                continue
+            else:
+                #release all keys at the same row/col across all layers
+                for l in keymap:
+                    key = keymap[l][row][col]
+                    if key is not None:
+                        #check if it's a string and not a keycode
+                        #release all the keycodes in the string
+                        if isinstance(key, str):
+                            for k in layout.keycodes(key): kbd.release(k)
+                            continue
+                        kbd.release(key)
