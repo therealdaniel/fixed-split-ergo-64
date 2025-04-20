@@ -4,6 +4,8 @@
 ### Instructions
 - Cut case and plate out of 4.5mm stock using the DXF files in [cutting files](./cutting_files/). I used white acrylic.
 - Press heat set threads into the bottom pieces - they have slightly bigger holes than the rest
+- Cut header sockets to fit into the MCU mounting slots and glue in
+- Solder header pins into MCU
 - Hot glue switches into the plate
 - Wire it (more details to come...)
 - Flash the Waveshare RP2040-Zero with the Circuit Python firmware from here: https://circuitpython.org/board/waveshare_rp2040_zero/
@@ -14,6 +16,7 @@
 - 4.5mm acrylic
 - 9 x 16mm M2 bolts - with a flat top, not countersunk
 - 9 x M2 heat set threads, 4.5mm tall
+- male and female pin headers
 - Wire
 - Hot glue gun
 - 60 x key switches - I like Gazzew Boba U4T
