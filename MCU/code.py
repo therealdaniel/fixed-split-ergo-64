@@ -1,18 +1,18 @@
 # SPDX-FileCopyrightText: 2021 Jeff Epler for Adafruit Industries
 # SPDX-FileCopyrightText: 2021 therealdaniel
 # SPDX-License-Identifier: MIT
-
+print("running")
 import keypad
 import board
 import usb_hid
 from adafruit_hid.keyboard import Keyboard, find_device
-from adafruit_hid.keycode import Keycode as K
+from adafruit_hid.keycode import Keycode
 from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
+from adafruit_hid.consumer_control import ConsumerControl
+from adafruit_hid.consumer_control_code import ConsumerControlCode
 
 NUM_ROWS = 5
 NUM_COLS = 12
-
-print("running")
 
 row_pins = (board.GP9, board.GP10, board.GP11, board.GP12, board.GP13)
 column_pins = (
@@ -44,7 +44,8 @@ class BitmapKeyboard(Keyboard):
         self.report_bitmap = memoryview(self.report)[1:]
 
     def _add_keycode_to_report(self, keycode):
-        modifier = K.modifier_bit(keycode)
+        print(f"keycode: {keycode}")
+        modifier = Keycode.modifier_bit(keycode)
         if modifier:
             # Set bit for this modifier.
             self.report_modifier[0] |= modifier
@@ -52,7 +53,7 @@ class BitmapKeyboard(Keyboard):
             self.report_bitmap[keycode >> 3] |= 1 << (keycode & 0x7)
 
     def _remove_keycode_from_report(self, keycode):
-        modifier = K.modifier_bit(keycode)
+        modifier = Keycode.modifier_bit(keycode)
         if modifier:
             # Set bit for this modifier.
             self.report_modifier[0] &= ~modifier
@@ -66,37 +67,55 @@ class BitmapKeyboard(Keyboard):
 
 kbd = BitmapKeyboard(usb_hid.devices)
 layout = KeyboardLayoutUS(kbd)
+cc = ConsumerControl(usb_hid.devices)
+
+#helper classes for making it easier to define keycodes, consumer control codes and strings.
+#returns a tuple (<"K", "C", "T">, <code>). When receiving key presses, we can
+#check which class the keymap item is for
+
+class LabeledKeycode:
+    def __getattr__(self, name):
+        return ("K", getattr(Keycode, name))
+
+class LabeledConsumerCode:
+    def __getattr__(self, name):
+        return ("C", getattr(ConsumerControlCode, name))
+
+K = LabeledKeycode()
+C = LabeledConsumerCode()
 
 keymap = {
     0: [
-        [K.ESCAPE, K.ONE, K.TWO, K.THREE, K.FOUR, K.FIVE, K.SIX, K.SEVEN, K.EIGHT, K.NINE, K.ZERO, K.BACKSPACE],  # row 1
+        [K.ESCAPE, K.ONE, K.TWO, K.THREE, K.FOUR, K.FIVE, K.SIX, K.SEVEN, K.EIGHT, K.NINE, K.ZERO, K.BACKSPACE],
         [K.GRAVE_ACCENT, K.Q, K.W, K.E, K.R, K.T, K.Y, K.U, K.I, K.O, K.P, K.BACKSPACE],
         [K.TAB, K.A, K.S, K.D, K.F, K.G, K.H, K.J, K.K, K.L, K.SEMICOLON, K.QUOTE],
         [K.LEFT_SHIFT, K.Z, K.X, K.C, K.V, K.B, K.N, K.M, K.COMMA, K.PERIOD, K.UP_ARROW, K.RETURN],
         [K.LEFT_CONTROL, K.GUI, K.ALT, K.DELETE, 'lower', K.SPACEBAR, K.SPACEBAR, 'raise', K.FORWARD_SLASH, K.LEFT_ARROW, K.DOWN_ARROW, K.RIGHT_ARROW]
         ],
     1: [
-        [None, None, None, None, None, None, None, None, None, None, None, None],  # row 1
+        [None, C.MUTE, C.VOLUME_DECREMENT, C.VOLUME_INCREMENT, None, None, None, None, None, None, None, None],
         [K.GRAVE_ACCENT, K.ONE, K.TWO, K.THREE, K.FOUR, K.FIVE, K.SIX, K.SEVEN, K.EIGHT, K.NINE, K.ZERO, None],
         [None, K.F1, K.F2, K.F3, K.F4, K.F5, K.F6, K.MINUS, K.EQUALS, K.LEFT_BRACKET, K.RIGHT_BRACKET, K.BACKSLASH],
         [K.LEFT_SHIFT, K.F7, K.F8, K.F9, K.F10, K.F11, K.F12, K.M, K.COMMA, K.PERIOD, None, None],
         [K.LEFT_CONTROL, K.GUI, K.ALT, None, 'lower', K.SPACEBAR, K.SPACEBAR, 'raise', None, None, None, None]
         ],
     2: [
-        [None, None, None, None, None, None, None, None, None, None, None, None],  # row 1
+        [None, None, None, None, None, None, None, None, None, None, None, None],
         [None, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', None],
         [None, K.F1, K.F2, K.F3, K.F4, K.F5, K.F6, '_', '+', '{', '}', '|'],
         [K.LEFT_SHIFT, K.F7, K.F8, K.F9, K.F10, K.F11, K.F12, None, None, None, None, None],
         [K.LEFT_CONTROL, K.GUI, K.ALT, K.DELETE, 'lower', K.SPACEBAR, K.SPACEBAR, 'raise', None, None, None, None]
         ],
     3: [
-        [None, None, None, None, None, None, None, None, None, None, None, None],  # row 1
+        [None, None, None, None, None, None, None, None, None, None, None, None],
         [None, None, None, None, None, None, None, None, None, None, None, None],
         [None, None, None, None, None, None, None, None, None, None, None, None],
         [None, None, None, None, None, None, None, None, None, None, None, None],
         [None, None, None, None, 'lower', None, None, 'raise', None, None, None, None],
         ]    
     }
+
+print(keymap)
 
 #validate shape of keymap
 for k, v in keymap.items():
@@ -143,23 +162,25 @@ while True:
             print(key)
             if key == 'raise':
                 press_raise()
-                continue
             elif key == 'lower':
                 press_lower()
-                continue
             #check if it's a string and not a keycode
-            if isinstance(key, str):
+            elif isinstance(key, str):
                 for k in layout.keycodes(key): kbd.press(k)
-                continue
-            kbd.press(key)
+            elif key[0] == 'K':
+                print(f"press keycode {key[1]}")
+                kbd.press(key[1])
+            elif key[0] == 'C':
+                print("press consumer control")
+                cc.press(key[1])
+            else:
+                print("Unknown key in keymap")
 
         else:
             if key == 'raise':
                 release_raise()
-                continue
             elif key == 'lower':
                 release_lower()
-                continue
             else:
                 #release all keys at the same row/col across all layers
                 for l in keymap:
@@ -169,5 +190,12 @@ while True:
                         #release all the keycodes in the string
                         if isinstance(key, str):
                             for k in layout.keycodes(key): kbd.release(k)
-                            continue
-                        kbd.release(key)
+
+                        elif key[0] == 'K':
+                            print("release keycode")
+                            kbd.release(key[1])
+                        elif key[0] == 'C':
+                            print(f"release consumer control")
+                            cc.release() #can only release all CC keys.
+                        else:
+                            print("Unknown key in keymap")
