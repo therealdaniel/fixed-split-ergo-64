@@ -14,17 +14,6 @@ from adafruit_hid.consumer_control_code import ConsumerControlCode
 NUM_ROWS = 5
 NUM_COLS = 12
 
-row_pins = (board.GP9, board.GP10, board.GP11, board.GP12, board.GP13)
-column_pins = (
-    board.GP14, board.GP15, board.GP26, board.GP27, board.GP28, board.GP29,
-    board.GP3, board.GP4, board.GP5, board.GP6, board.GP7, board.GP8
-    )
-
-keys = keypad.KeyMatrix(
-    row_pins=row_pins,
-    column_pins=column_pins,
-    columns_to_anodes=True)
-
 class BitmapKeyboard(Keyboard):
     def __init__(self, devices):
         device = find_device(devices, usage_page=0x1, usage=0x6)
@@ -44,7 +33,6 @@ class BitmapKeyboard(Keyboard):
         self.report_bitmap = memoryview(self.report)[1:]
 
     def _add_keycode_to_report(self, keycode):
-        print(f"keycode: {keycode}")
         modifier = Keycode.modifier_bit(keycode)
         if modifier:
             # Set bit for this modifier.
@@ -65,6 +53,17 @@ class BitmapKeyboard(Keyboard):
             self.report[i] = 0
         self._keyboard_device.send_report(self.report)
 
+row_pins = (board.GP9, board.GP10, board.GP11, board.GP12, board.GP13)
+column_pins = (
+    board.GP14, board.GP15, board.GP26, board.GP27, board.GP28, board.GP29,
+    board.GP3, board.GP4, board.GP5, board.GP6, board.GP7, board.GP8
+    )
+
+keys = keypad.KeyMatrix(
+    row_pins=row_pins,
+    column_pins=column_pins,
+    columns_to_anodes=True)
+
 kbd = BitmapKeyboard(usb_hid.devices)
 layout = KeyboardLayoutUS(kbd)
 cc = ConsumerControl(usb_hid.devices)
@@ -72,7 +71,6 @@ cc = ConsumerControl(usb_hid.devices)
 #helper classes for making it easier to define keycodes, consumer control codes and strings.
 #returns a tuple (<"K", "C", "T">, <code>). When receiving key presses, we can
 #check which class the keymap item is for
-
 class LabeledKeycode:
     def __getattr__(self, name):
         return ("K", getattr(Keycode, name))
@@ -96,15 +94,15 @@ keymap = {
         [None, C.MUTE, C.VOLUME_DECREMENT, C.VOLUME_INCREMENT, None, None, None, None, None, None, None, None],
         [K.GRAVE_ACCENT, K.ONE, K.TWO, K.THREE, K.FOUR, K.FIVE, K.SIX, K.SEVEN, K.EIGHT, K.NINE, K.ZERO, None],
         [None, K.F1, K.F2, K.F3, K.F4, K.F5, K.F6, K.MINUS, K.EQUALS, K.LEFT_BRACKET, K.RIGHT_BRACKET, K.BACKSLASH],
-        [K.LEFT_SHIFT, K.F7, K.F8, K.F9, K.F10, K.F11, K.F12, K.M, K.COMMA, K.PERIOD, None, None],
-        [K.LEFT_CONTROL, K.GUI, K.ALT, None, 'lower', K.SPACEBAR, K.SPACEBAR, 'raise', None, None, None, None]
+        [K.LEFT_SHIFT, K.F7, K.F8, K.F9, K.F10, K.F11, K.F12, K.M, K.COMMA, K.PERIOD, K.PAGE_UP, None],
+        [K.LEFT_CONTROL, K.GUI, K.ALT, None, 'lower', K.SPACEBAR, K.SPACEBAR, 'raise', None, K.HOME, K.PAGE_DOWN, K.END]
         ],
     2: [
         [None, None, None, None, None, None, None, None, None, None, None, None],
         [None, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', None],
         [None, K.F1, K.F2, K.F3, K.F4, K.F5, K.F6, '_', '+', '{', '}', '|'],
-        [K.LEFT_SHIFT, K.F7, K.F8, K.F9, K.F10, K.F11, K.F12, None, None, None, None, None],
-        [K.LEFT_CONTROL, K.GUI, K.ALT, K.DELETE, 'lower', K.SPACEBAR, K.SPACEBAR, 'raise', None, None, None, None]
+        [K.LEFT_SHIFT, K.F7, K.F8, K.F9, K.F10, K.F11, K.F12, None, None, None, K.PAGE_UP, None],
+        [K.LEFT_CONTROL, K.GUI, K.ALT, K.DELETE, 'lower', K.SPACEBAR, K.SPACEBAR, 'raise', None, K.HOME, K.PAGE_DOWN, K.END]
         ],
     3: [
         [None, None, None, None, None, None, None, None, None, None, None, None],
@@ -115,13 +113,23 @@ keymap = {
         ]    
     }
 
-print(keymap)
-
 #validate shape of keymap
 for k, v in keymap.items():
+    print(f"layer{k}")
     assert len(v) == NUM_ROWS, f"incorrect number of rows in layer {k}.\nExpecting {NUM_ROWS}, got {len(v)}"
     for row in v:
+        print(row)
         assert len(row) == NUM_COLS, f"incorrect number of columns in layer {k}, row: {row}.\nExpecting {NUM_COLS}, got {len(row)}"
+
+
+#need to track the shift key so i don't accidentally release it when releasing layout.keycodes()
+row_shift = 3
+col_shift = 0
+key_number_shift = row_shift * len(column_pins) + col_shift
+
+#coudl just track the shift key on its own, but a set is extendable in case more
+#need to be tracked.
+pressed_keys = set()
 
 # layer logic------------------------------------------------------------------/
 # layer_state is 2 bits comprised of whether raise and lower are active
@@ -150,16 +158,23 @@ def release_raise():
     layer_state &= ~RAISE
 #------------------------------------------------------------------------------/
 
+#main loop---------------------------------------------------------------------/
 while True:
     ev = keys.events.get()
 
     if ev is not None:
         row = ev.key_number // len(column_pins)
         col = ev.key_number % len(column_pins)
+
+        # Update pressed_keys
+        if ev.pressed:
+            pressed_keys.add(ev.key_number)
+        else:
+            pressed_keys.discard(ev.key_number)
+
         key = keymap[layer_state][row][col]
 
         if ev.pressed and key is not None:
-            print(key)
             if key == 'raise':
                 press_raise()
             elif key == 'lower':
@@ -168,10 +183,8 @@ while True:
             elif isinstance(key, str):
                 for k in layout.keycodes(key): kbd.press(k)
             elif key[0] == 'K':
-                print(f"press keycode {key[1]}")
                 kbd.press(key[1])
             elif key[0] == 'C':
-                print("press consumer control")
                 cc.press(key[1])
             else:
                 print("Unknown key in keymap")
@@ -189,13 +202,17 @@ while True:
                         #check if it's a string and not a keycode
                         #release all the keycodes in the string
                         if isinstance(key, str):
-                            for k in layout.keycodes(key): kbd.release(k)
+                            #if shift is physically being held down, don't release it
+                            if key_number_shift in pressed_keys:
+                                for k in layout.keycodes(key):
+                                    if k != Keycode.SHIFT:
+                                        kbd.release(k)
+                            else:
+                                for k in layout.keycodes(key): kbd.release(k)
 
                         elif key[0] == 'K':
-                            print("release keycode")
                             kbd.release(key[1])
                         elif key[0] == 'C':
-                            print(f"release consumer control")
-                            cc.release() #can only release all CC keys.
+                                 cc.release() #can only release all CC keys.
                         else:
                             print("Unknown key in keymap")
